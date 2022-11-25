@@ -1,0 +1,32 @@
+#
+# #ddev-generated: Automatically generated Neos Flow Settings.yaml file.
+# ddev manages this file and may delete or overwrite the file unless this comment is removed.
+# It is recommended that you leave this file alone.
+#
+
+Neos:
+  Flow:
+    persistence:
+      backendOptions:
+        host: '{{ .DBHostname }}'
+        port: '{{ .DBPort }}'
+        dbname: 'db'
+        user: 'db'
+        password: 'db'
+        driver: '{{ .DBDriver }}'
+    http:
+      trustedProxies:
+        proxies: '*'
+    error:
+      debugger:
+        recursionLimit: 20
+
+  SwiftMailer:
+    transport:
+      type: 'Swift_SmtpTransport'
+      options:
+        host: localhost
+        port: 1025
+
+  Imagine:
+    driver: Imagick

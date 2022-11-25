@@ -2,12 +2,13 @@ package ddevapp
 
 import (
 	"fmt"
-	"github.com/drud/ddev/pkg/nodeps"
-	"github.com/drud/ddev/pkg/util"
 	"os"
 	"path"
 	"path/filepath"
 	"sort"
+
+	"github.com/drud/ddev/pkg/nodeps"
+	"github.com/drud/ddev/pkg/util"
 )
 
 type settingsCreator func(*DdevApp) (string, error)
@@ -102,6 +103,9 @@ func init() {
 		},
 		nodeps.AppTypeTYPO3: {
 			settingsCreator: createTypo3SettingsFile, uploadDir: getTypo3UploadDir, hookDefaultComments: getTypo3Hooks, apptypeSettingsPaths: setTypo3SiteSettingsPaths, appTypeDetect: isTypo3App, postImportDBAction: nil, configOverrideAction: nil, postConfigAction: nil, postStartAction: nil, importFilesAction: typo3ImportFilesAction,
+		},
+		nodeps.AppTypeNeosFlow: {
+			settingsCreator: createNeosFlowSettingsFile, apptypeSettingsPaths: setNeosFlowSiteSettingsPaths, importFilesAction: neosFLowImportFilesAction, appTypeDetect: isNeosFlowApp,
 		},
 		nodeps.AppTypeWordPress: {
 			settingsCreator: createWordpressSettingsFile, uploadDir: getWordpressUploadDir, hookDefaultComments: getWordpressHooks, apptypeSettingsPaths: setWordpressSiteSettingsPaths, appTypeDetect: isWordpressApp, postImportDBAction: nil, configOverrideAction: nil, postConfigAction: nil, postStartAction: nil, importFilesAction: wordpressImportFilesAction,

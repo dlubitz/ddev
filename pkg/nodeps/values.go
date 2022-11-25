@@ -92,6 +92,7 @@ const (
 	AppTypePHP       = "php"
 	AppTypeShopware6 = "shopware6"
 	AppTypeTYPO3     = "typo3"
+	AppTypeNeosFlow  = "neos-flow"
 	AppTypeWordPress = "wordpress"
 )
 
