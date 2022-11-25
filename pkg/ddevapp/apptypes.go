@@ -105,7 +105,7 @@ func init() {
 			settingsCreator: createTypo3SettingsFile, uploadDir: getTypo3UploadDir, hookDefaultComments: getTypo3Hooks, apptypeSettingsPaths: setTypo3SiteSettingsPaths, appTypeDetect: isTypo3App, postImportDBAction: nil, configOverrideAction: nil, postConfigAction: nil, postStartAction: nil, importFilesAction: typo3ImportFilesAction,
 		},
 		nodeps.AppTypeNeosFlow: {
-			settingsCreator: createNeosFlowSettingsFile, apptypeSettingsPaths: setNeosFlowSiteSettingsPaths, importFilesAction: neosFLowImportFilesAction, appTypeDetect: isNeosFlowApp,
+			settingsCreator: createNeosFlowSettingsFile, apptypeSettingsPaths: setNeosFlowSiteSettingsPaths, importFilesAction: neosFlowImportFilesAction, appTypeDetect: isNeosFlowApp, configOverrideAction: neosFlowConfigOverrideAction,
 		},
 		nodeps.AppTypeWordPress: {
 			settingsCreator: createWordpressSettingsFile, uploadDir: getWordpressUploadDir, hookDefaultComments: getWordpressHooks, apptypeSettingsPaths: setWordpressSiteSettingsPaths, appTypeDetect: isWordpressApp, postImportDBAction: nil, configOverrideAction: nil, postConfigAction: nil, postStartAction: nil, importFilesAction: wordpressImportFilesAction,

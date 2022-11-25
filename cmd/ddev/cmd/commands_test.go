@@ -220,6 +220,8 @@ func TestCustomCommands(t *testing.T) {
 		assert.NoError(err)
 	}
 
+	// todo for flow
+
 	// Drupal commands should only be available for type drupal
 	app.Type = nodeps.AppTypeDrupal9
 	_ = app.WriteConfig()

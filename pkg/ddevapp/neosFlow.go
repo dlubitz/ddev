@@ -123,7 +123,7 @@ func setNeosFlowSiteSettingsPaths(app *DdevApp) {
 
 // typo3ImportFilesAction defines the TYPO3 workflow for importing project files.
 // The TYPO3 import-files workflow is currently identical to the Drupal workflow.
-func neosFLowImportFilesAction(app *DdevApp, importPath, extPath string) error {
+func neosFlowImportFilesAction(app *DdevApp, importPath, extPath string) error {
 	destPath := app.GetHostUploadDirFullPath()
 
 	// parent of destination dir should exist
@@ -177,4 +177,23 @@ func isNeosFlowApp(app *DdevApp) bool {
 	}
 
 	return false
+}
+
+func neosFlowConfigOverrideAction(app *DdevApp) error {
+	if app.Docroot == "" {
+		// set default to "Web"
+		app.Docroot = "Web"
+		fullPath := filepath.Join(app.AppRoot, app.ComposerRoot, "Web")
+		if err := os.MkdirAll(fullPath, 0755); err != nil {
+			return fmt.Errorf("unable to create docroot: %v", err)
+		}
+		return nil
+	}
+
+	if app.Docroot == "Web" {
+		return nil
+	}
+
+	// warning, using unconventional docroot "{app.Docroot}" propose to change
+	return nil
 }
