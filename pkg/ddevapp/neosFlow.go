@@ -13,7 +13,7 @@ import (
 	"github.com/ddev/ddev/pkg/util"
 )
 
-// createTypo3SettingsFile creates the app's LocalConfiguration.php and
+// createNeosFlowSettingsFile creates the app's LocalConfiguration.php and
 // AdditionalConfiguration.php, adding things like database host, name, and
 // password. Returns the fullpath to settings file and error
 func createNeosFlowSettingsFile(app *DdevApp) (string, error) {
@@ -26,7 +26,7 @@ func createNeosFlowSettingsFile(app *DdevApp) (string, error) {
 		util.Warning("Neos Flow does not seem to have been set up yet, missing .flow")
 	}
 
-	// TYPO3 ddev settings file will be AdditionalConfiguration.php (app.SiteDdevSettingsFile).
+	// Neos/Flow ddev settings file will be AdditionalConfiguration.php (app.SiteDdevSettingsFile).
 	// Check if the file already exists.
 	if fileutil.FileExists(app.SiteDdevSettingsFile) {
 		// Check if the file is managed by ddev.
@@ -44,16 +44,15 @@ func createNeosFlowSettingsFile(app *DdevApp) (string, error) {
 
 	output.UserOut.Printf("Generating %s file for database connection.", filepath.Base(app.SiteDdevSettingsFile))
 	if err := writeNeosFlowSettingsFile(app); err != nil {
-		return "", fmt.Errorf("failed to write Neos Flow Settings.yaml file: %v", err.Error())
+		return "", fmt.Errorf("failed to write Neos Flow Settings.ddev.yaml file: %v", err.Error())
 	}
 
 	return app.SiteDdevSettingsFile, nil
 }
 
-// writeTypo3SettingsFile produces AdditionalConfiguration.php file
+// writeNeosFlowSettingsFile produces Settings.ddev.yaml file
 // It's assumed that the LocalConfiguration.php already exists, and we're
-// overriding the db config values in it. The typo3conf/ directory will
-// be created if it does not yet exist.
+// overriding the db config values in it.
 func writeNeosFlowSettingsFile(app *DdevApp) error {
 	filePath := app.SiteDdevSettingsFile
 
@@ -91,7 +90,7 @@ func writeNeosFlowSettingsFile(app *DdevApp) error {
 		return err
 	}
 
-	t, err := template.New("Settings.yaml").ParseFS(bundledAssets, "neosFlow/Settings.yaml")
+	t, err := template.New("Settings.ddev.yaml").ParseFS(bundledAssets, "neosFlow/Settings.ddev.yaml")
 	if err != nil {
 		return err
 	}
@@ -110,18 +109,18 @@ func setNeosFlowSiteSettingsPaths(app *DdevApp) {
 	var localSettingsFilePath string
 
 	if isNeosFlowApp(app) {
-		localSettingsFilePath = filepath.Join(settingsFileBasePath, "Configuration", "Development", "Ddev", "Settings.yaml")
+		localSettingsFilePath = filepath.Join(settingsFileBasePath, "Configuration", "Development", "Ddev", "Settings.ddev.yaml")
 	} else {
-		// As long as TYPO3 is not installed, the file paths are set to the
+		// As long as Neos/Flow is not installed, the file paths are set to the
 		// AppRoot to avoid the creation of the .gitignore in the wrong location.
-		localSettingsFilePath = filepath.Join(settingsFileBasePath, "Settings.yaml")
+		localSettingsFilePath = filepath.Join(settingsFileBasePath, "Settings.ddev.yaml")
 	}
 
 	// Update file paths
 	app.SiteDdevSettingsFile = localSettingsFilePath
 }
 
-// neosFlowImportFilesAction defines the TYPO3 workflow for importing project files.
+// neosFlowImportFilesAction defines the Neos/Flow workflow for importing project files.
 // The NeosFlow import-files workflow is currently identical to the Drupal workflow.
 func neosFlowImportFilesAction(app *DdevApp, uploadDir, importPath, extPath string) error {
 	destPath := app.calculateHostUploadDirFullPath(uploadDir)
@@ -167,7 +166,7 @@ func neosFlowImportFilesAction(app *DdevApp, uploadDir, importPath, extPath stri
 	return nil
 }
 
-// isTypoApp returns true if the app is of type typo3
+// isNeosFlowApp returns true if the app is of type neos-flow
 func isNeosFlowApp(app *DdevApp) bool {
 	neosFlowExecuteable := filepath.Join(app.AppRoot, app.ComposerRoot, "flow")
 
@@ -180,20 +179,17 @@ func isNeosFlowApp(app *DdevApp) bool {
 }
 
 func neosFlowConfigOverrideAction(app *DdevApp) error {
+
 	if app.Docroot == "" {
 		// set default to "Web"
 		app.Docroot = "Web"
-		fullPath := filepath.Join(app.AppRoot, app.ComposerRoot, "Web")
-		if err := os.MkdirAll(fullPath, 0755); err != nil {
-			return fmt.Errorf("unable to create docroot: %v", err)
-		}
-		return nil
 	}
 
-	if app.Docroot == "Web" {
-		return nil
-	}
+	app.UploadDirs = append(app.UploadDirs, "../Data/Persistent")
 
-	// warning, using unconventional docroot "{app.Docroot}" propose to change
-	return nil
+	app.WebEnvironment = append(app.WebEnvironment, "FLOW_CONTEXT=Development/Ddev")
+	app.WebEnvironment = append(app.WebEnvironment, "FLOW_PATH_TEMPORARY_BASE=/tmp/Flow")
+	app.WebEnvironment = append(app.WebEnvironment, "FLOW_REWRITEURLS=1")
+
+	return nil;
 }

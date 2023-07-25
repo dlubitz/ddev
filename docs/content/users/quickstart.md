@@ -331,6 +331,35 @@ While the generic `php` project type is [ready to go](./project.md) with any CMS
     !!!tip
         Moodle relies on a periodic cron job—don’t forget to set that up! See [ddev/ddev-cron](https://github.com/ddev/ddev-cron).
 
+=== "Neos/Flow"
+
+    ## Neos/Flow
+
+    === "Composer"
+
+        ### Composer
+
+        ```bash
+        mkdir neos-example
+        cd neos-example
+        ddev config --project-type=neos-flow --php-version 8.2
+        ddev composer create --no-scripts neos/neos-base-distribution
+        ddev composer install
+        ddev restart
+        ```
+
+    === "Git Clone"
+
+        ### Git Clone
+
+        ```bash
+        git clone http://YOUR-PROJECT-URL-HERE your-project
+        cd your-project
+        ddev config --project-type=neos-flow --php-version 8.2
+        ddev composer install
+        ddev restart
+        ```
+
 === "Python"
 
     ## Python/Flask (Experimental)
@@ -527,6 +556,8 @@ For **Drupal** and **Backdrop**, DDEV settings are written to a DDEV-managed fil
 For **Magento 1**, DDEV settings go into `app/etc/local.xml`.
 
 In **Magento 2**, DDEV settings go into `app/etc/env.php`.
+
+For **Neos/Flow**, DDEV settings are written to `Configuration/Development/Ddev/Settings.ddev.yaml`. If `Configuration/Development/Ddev/Settings.ddev.yaml` exists and is not managed by DDEV, it will not be modified.
 
 For **TYPO3**, DDEV settings are written to `AdditionalConfiguration.php`. If `AdditionalConfiguration.php` exists and is not managed by DDEV, it will not be modified.
 

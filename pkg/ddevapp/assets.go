@@ -23,6 +23,7 @@ import (
 //go:embed django4/*
 //go:embed drupal/*
 //go:embed magento/*
+//go:embed neosFlow/*
 //go:embed wordpress/*
 //go:embed typo3/*
 //go:embed postgres/*
