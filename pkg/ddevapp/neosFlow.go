@@ -6,11 +6,11 @@ import (
 	"path/filepath"
 	"text/template"
 
-	"github.com/drud/ddev/pkg/archive"
-	"github.com/drud/ddev/pkg/fileutil"
-	"github.com/drud/ddev/pkg/nodeps"
-	"github.com/drud/ddev/pkg/output"
-	"github.com/drud/ddev/pkg/util"
+	"github.com/ddev/ddev/pkg/archive"
+	"github.com/ddev/ddev/pkg/fileutil"
+	"github.com/ddev/ddev/pkg/nodeps"
+	"github.com/ddev/ddev/pkg/output"
+	"github.com/ddev/ddev/pkg/util"
 )
 
 // createTypo3SettingsFile creates the app's LocalConfiguration.php and
@@ -121,10 +121,10 @@ func setNeosFlowSiteSettingsPaths(app *DdevApp) {
 	app.SiteDdevSettingsFile = localSettingsFilePath
 }
 
-// typo3ImportFilesAction defines the TYPO3 workflow for importing project files.
-// The TYPO3 import-files workflow is currently identical to the Drupal workflow.
-func neosFlowImportFilesAction(app *DdevApp, importPath, extPath string) error {
-	destPath := app.GetHostUploadDirFullPath()
+// neosFlowImportFilesAction defines the TYPO3 workflow for importing project files.
+// The NeosFlow import-files workflow is currently identical to the Drupal workflow.
+func neosFlowImportFilesAction(app *DdevApp, uploadDir, importPath, extPath string) error {
+	destPath := app.calculateHostUploadDirFullPath(uploadDir)
 
 	// parent of destination dir should exist
 	if !fileutil.FileExists(filepath.Dir(destPath)) {

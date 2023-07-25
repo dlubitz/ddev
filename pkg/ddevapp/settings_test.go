@@ -5,13 +5,12 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
-	"time"
 
-	. "github.com/drud/ddev/pkg/ddevapp"
-	"github.com/drud/ddev/pkg/fileutil"
-	"github.com/drud/ddev/pkg/nodeps"
-	"github.com/drud/ddev/pkg/testcommon"
-	"github.com/drud/ddev/pkg/util"
+	. "github.com/ddev/ddev/pkg/ddevapp"
+	"github.com/ddev/ddev/pkg/fileutil"
+	"github.com/ddev/ddev/pkg/nodeps"
+	"github.com/ddev/ddev/pkg/testcommon"
+	"github.com/ddev/ddev/pkg/util"
 	asrt "github.com/stretchr/testify/assert"
 )
 
@@ -94,7 +93,7 @@ func TestWriteDrushConfig(t *testing.T) {
 	origDir, _ := os.Getwd()
 
 	for _, site := range TestSites {
-		runTime := util.TimeTrack(time.Now(), fmt.Sprintf("%s WriteDrushrc", site.Name))
+		runTime := util.TimeTrackC(fmt.Sprintf("%s WriteDrushrc", site.Name))
 
 		testcommon.ClearDockerEnv()
 
@@ -120,8 +119,8 @@ func TestWriteDrushConfig(t *testing.T) {
 		//nolint: errcheck
 		defer app.Stop(true, false)
 		if startErr != nil {
-			logs, _ := GetErrLogsFromApp(app, startErr)
-			t.Fatalf("app.Start failed, startErr=%v, logs=\n========\n%s\n===========\n", startErr, logs)
+			logs, health, _ := GetErrLogsFromApp(app, startErr)
+			t.Fatalf("app.Start failed, startErr=%v, healthcheck:\n%s\n\nlogs=\n========\n%s\n===========\n", startErr, health, logs)
 		}
 
 		drushFilePath := filepath.Join(filepath.Dir(app.SiteSettingsPath), "drushrc.php")

@@ -7,7 +7,7 @@
 # If you're on Windows (not WSL2) please run it in a git-bash window
 # When you are reporting an issue, please include the full output of this script.
 # If you have NFS enabled globally, please temporarily disable it with
-# `ddev config global --nfs-mount-enabled=false`
+# `ddev config global --performance-mode-reset`
 
 PROJECT_NAME=tryddevproject-${RANDOM}
 
@@ -30,10 +30,19 @@ function docker_desktop_version {
   fi
 }
 
-if ! ddev describe >/dev/null 2>&1; then printf "Please try running this in an existing DDEV project directory.\nIt doesn't work in other directories.\n"; exit 2; fi
+if ! ddev describe >/dev/null 2>&1; then printf "Please try running this in an existing DDEV project directory, preferably the problem project.\nIt doesn't work in other directories.\n"; exit 2; fi
+
+echo "======= Existing project config ========="
+ddev debug configyaml | grep -v web_environment
+
 PROJECT_DIR=../${PROJECT_NAME}
+echo "======= Creating dummy project named  ${PROJECT_NAME} in ${PROJECT_DIR} ========="
+
+set -eu
 mkdir -p "${PROJECT_DIR}/web" || (echo "Unable to create test project at ${PROJECT_DIR}/web, please check ownership and permissions" && exit 2 )
 cd "${PROJECT_DIR}" || exit 3
+ddev config --project-type=php --docroot=web >/dev/null 2>&1  || (printf "\n\nPlease run 'ddev debug test' in the root of the existing project where you're having trouble.\n\n" && exit 4)
+set +eu
 
 echo -n "OS Information: " && uname -a
 command -v sw_vers >/dev/null && sw_vers
@@ -74,7 +83,6 @@ cat <<END >web/index.php
   printf("Success accessing database... %s\n", \$mysqli->host_info);
   print "ddev is working. You will want to delete this project with 'ddev delete -Oy ${PROJECT_NAME}'\n";
 END
-ddev config --project-type=php --docroot=web
 trap cleanup EXIT
 
 ddev start -y || ( \

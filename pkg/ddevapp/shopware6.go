@@ -2,11 +2,11 @@ package ddevapp
 
 import (
 	"fmt"
-	"github.com/drud/ddev/pkg/archive"
-	"github.com/drud/ddev/pkg/fileutil"
-	"github.com/drud/ddev/pkg/util"
 	"os"
 	"path/filepath"
+
+	"github.com/ddev/ddev/pkg/archive"
+	"github.com/ddev/ddev/pkg/fileutil"
 )
 
 // isShopware6App returns true if the app is of type shopware6
@@ -24,8 +24,8 @@ func setShopware6SiteSettingsPaths(app *DdevApp) {
 }
 
 // shopware6ImportFilesAction defines the shopware6 workflow for importing user-generated files.
-func shopware6ImportFilesAction(app *DdevApp, importPath, extPath string) error {
-	destPath := app.GetHostUploadDirFullPath()
+func shopware6ImportFilesAction(app *DdevApp, uploadDir, importPath, extPath string) error {
+	destPath := app.calculateHostUploadDirFullPath(uploadDir)
 
 	// parent of destination dir should exist
 	if !fileutil.FileExists(filepath.Dir(destPath)) {
@@ -68,48 +68,30 @@ func shopware6ImportFilesAction(app *DdevApp, importPath, extPath string) error 
 	return nil
 }
 
-// getShopwareUploadDir will return a custom upload dir if defined,
-// returning a default path if not; this is relative to the docroot
-func getShopwareUploadDir(app *DdevApp) string {
-	if app.UploadDir == "" {
-		return "media"
-	}
-
-	return app.UploadDir
+// getShopwareUploadDirs will return the default paths.
+func getShopwareUploadDirs(_ *DdevApp) []string {
+	return []string{"media"}
 }
 
 // shopware6PostStartAction checks to see if the .env file is set up
 func shopware6PostStartAction(app *DdevApp) error {
-	envFile := filepath.Join(app.AppRoot, ".env")
-	var addOnConfig string
-	expectedDatabaseURL := `DATABASE_URL="mysql://db:db@db:3306/db"`
-	expectedPrimaryURL := fmt.Sprintf(`APP_URL="%s"`, app.GetPrimaryURL())
-	expectedMailerURL := `MAILER_URL="smtp://localhost:1025?encryption=&auth_mode="`
-
-	if fileutil.FileExists(envFile) {
-		isConfiguredDbConnection, _ := fileutil.FgrepStringInFile(app.SiteSettingsPath, expectedDatabaseURL)
-		isAppURLCorrect, _ := fileutil.FgrepStringInFile(app.SiteSettingsPath, expectedPrimaryURL)
-		isMailhogConfigCorrect, _ := fileutil.FgrepStringInFile(envFile, expectedMailerURL)
-
-		if !isConfiguredDbConnection {
-			addOnConfig = addOnConfig + expectedDatabaseURL + "\n"
+	if app.DisableSettingsManagement {
+		return nil
+	}
+	envFilePath := filepath.Join(app.AppRoot, ".env")
+	_, envText, err := ReadProjectEnvFile(envFilePath)
+	var envMap = map[string]string{
+		"DATABASE_URL": `mysql://db:db@db:3306/db`,
+		"APP_URL":      app.GetPrimaryURL(),
+		"MAILER_URL":   `smtp://127.0.0.1:1025?encryption=&auth_mode=`,
+	}
+	// Shopware 6 refuses to do bin/console system:setup if the env file exists,
+	// so if it doesn't exist, wait for it to be created
+	if err == nil {
+		err := WriteProjectEnvFile(envFilePath, envMap, envText)
+		if err != nil {
+			return err
 		}
-		if !isAppURLCorrect {
-			addOnConfig = addOnConfig + expectedPrimaryURL + "\n"
-		}
-		if !isMailhogConfigCorrect {
-			addOnConfig = addOnConfig + expectedMailerURL + "\n"
-		}
-		if addOnConfig != "" {
-			addOnConfig = "# =================\n# Configuration added by ddev\n" + addOnConfig
-			err := fileutil.AppendStringToFile(envFile, addOnConfig)
-			if err != nil {
-				return err
-			}
-			util.Warning("ddev configuration added to %s", envFile)
-		}
-	} else {
-		util.Warning("the .env file has not yet been created (%s)", envFile)
 	}
 
 	return nil

@@ -1,14 +1,18 @@
 package cmd
 
 import (
-	"github.com/drud/ddev/pkg/globalconfig"
-	"github.com/drud/ddev/pkg/nodeps"
-	"github.com/drud/ddev/pkg/output"
-	"github.com/drud/ddev/pkg/util"
-	"github.com/drud/ddev/pkg/versionconstants"
-	"github.com/spf13/cobra"
+	"fmt"
 	"sort"
 	"strings"
+
+	configTypes "github.com/ddev/ddev/pkg/config/types"
+	"github.com/ddev/ddev/pkg/globalconfig"
+	globalconfigTypes "github.com/ddev/ddev/pkg/globalconfig/types"
+	"github.com/ddev/ddev/pkg/nodeps"
+	"github.com/ddev/ddev/pkg/output"
+	"github.com/ddev/ddev/pkg/util"
+	"github.com/ddev/ddev/pkg/versionconstants"
+	"github.com/spf13/cobra"
 )
 
 var (
@@ -23,12 +27,12 @@ var (
 var configGlobalCommand = &cobra.Command{
 	Use:     "global [flags]",
 	Short:   "Change global configuration",
-	Example: "ddev config global --instrumentation-opt-in=false\nddev config global --omit-containers=dba,ddev-ssh-agent",
+	Example: "ddev config global --instrumentation-opt-in=false\nddev config global --omit-containers=ddev-ssh-agent",
 	Run:     handleGlobalConfig,
 }
 
 // handleGlobalConfig handles all the flag processing for global config
-func handleGlobalConfig(cmd *cobra.Command, args []string) {
+func handleGlobalConfig(cmd *cobra.Command, _ []string) {
 	err := globalconfig.ReadGlobalConfig()
 	if err != nil {
 		util.Failed("Unable to read global config file: %v", err)
@@ -83,13 +87,37 @@ func handleGlobalConfig(cmd *cobra.Command, args []string) {
 	}
 
 	if cmd.Flag("nfs-mount-enabled").Changed {
-		globalconfig.DdevGlobalConfig.NFSMountEnabledGlobal, _ = cmd.Flags().GetBool("nfs-mount-enabled")
-		dirty = true
+		if v, _ := cmd.Flags().GetBool("nfs-mount-enabled"); v {
+			globalconfig.DdevGlobalConfig.SetPerformanceMode(configTypes.PerformanceModeNFS)
+			dirty = true
+		}
 	}
 
 	if cmd.Flag("mutagen-enabled").Changed {
-		globalconfig.DdevGlobalConfig.MutagenEnabledGlobal, _ = cmd.Flags().GetBool("mutagen-enabled")
-		dirty = true
+		if v, _ := cmd.Flags().GetBool("mutagen-enabled"); v {
+			globalconfig.DdevGlobalConfig.SetPerformanceMode(configTypes.PerformanceModeMutagen)
+			dirty = true
+		}
+	}
+
+	if cmd.Flag(configTypes.FlagPerformanceModeName).Changed {
+		performanceMode, _ := cmd.Flags().GetString(configTypes.FlagPerformanceModeName)
+
+		if err := configTypes.CheckValidPerformanceMode(performanceMode, configTypes.ConfigTypeGlobal); err != nil {
+			util.Error("%s. Not changing value of performance_mode option.", err)
+		} else {
+			globalconfig.DdevGlobalConfig.SetPerformanceMode(performanceMode)
+			dirty = true
+		}
+	}
+
+	if cmd.Flag(configTypes.FlagPerformanceModeResetName).Changed {
+		performanceModeReset, _ := cmd.Flags().GetBool(configTypes.FlagPerformanceModeResetName)
+
+		if performanceModeReset {
+			globalconfig.DdevGlobalConfig.SetPerformanceMode(configTypes.PerformanceModeEmpty)
+			dirty = true
+		}
 	}
 
 	if cmd.Flag("xdebug-ide-location").Changed {
@@ -183,11 +211,32 @@ func handleGlobalConfig(cmd *cobra.Command, args []string) {
 	}
 
 	if cmd.Flag("use-traefik").Changed {
-		val, _ := cmd.Flags().GetBool("use-traefik")
-		globalconfig.DdevGlobalConfig.UseTraefik = val
-		dirty = true
+		if v, _ := cmd.Flags().GetBool("use-traefik"); v {
+			globalconfig.DdevGlobalConfig.Router = globalconfigTypes.RouterTypeTraefik
+			dirty = true
+		}
 	}
 
+	if cmd.Flag("router").Changed {
+		val, _ := cmd.Flags().GetString("router")
+		globalconfig.DdevGlobalConfig.Router = val
+		dirty = true
+	}
+	if cmd.Flag("wsl2-no-windows-hosts-mgt").Changed {
+		val, _ := cmd.Flags().GetBool("wsl2-no-windows-hosts-mgt")
+		globalconfig.DdevGlobalConfig.WSL2NoWindowsHostsMgt = val
+		dirty = true
+	}
+	if cmd.Flag("router-http-port").Changed {
+		val, _ := cmd.Flags().GetString("router-http-port")
+		globalconfig.DdevGlobalConfig.RouterHTTPPort = val
+		dirty = true
+	}
+	if cmd.Flag("router-https-port").Changed {
+		val, _ := cmd.Flags().GetString("router-https-port")
+		globalconfig.DdevGlobalConfig.RouterHTTPSPort = val
+		dirty = true
+	}
 	if dirty {
 		err = globalconfig.ValidateGlobalConfig()
 		if err != nil {
@@ -202,8 +251,7 @@ func handleGlobalConfig(cmd *cobra.Command, args []string) {
 	output.UserOut.Printf("instrumentation-opt-in=%v", globalconfig.DdevGlobalConfig.InstrumentationOptIn)
 	output.UserOut.Printf("omit-containers=[%s]", strings.Join(globalconfig.DdevGlobalConfig.OmitContainersGlobal, ","))
 	output.UserOut.Printf("web-environment=[%s]", strings.Join(globalconfig.DdevGlobalConfig.WebEnvironment, ","))
-	output.UserOut.Printf("mutagen-enabled=%v", globalconfig.DdevGlobalConfig.MutagenEnabledGlobal)
-	output.UserOut.Printf("nfs-mount-enabled=%v", globalconfig.DdevGlobalConfig.NFSMountEnabledGlobal)
+	output.UserOut.Printf("%s=%v", configTypes.FlagPerformanceModeName, globalconfig.DdevGlobalConfig.GetPerformanceMode())
 
 	output.UserOut.Printf("router-bind-all-interfaces=%v", globalconfig.DdevGlobalConfig.RouterBindAllInterfaces)
 	output.UserOut.Printf("internet-detection-timeout-ms=%v", globalconfig.DdevGlobalConfig.InternetDetectionTimeout)
@@ -220,14 +268,18 @@ func handleGlobalConfig(cmd *cobra.Command, args []string) {
 	output.UserOut.Printf("project-tld=%v", globalconfig.DdevGlobalConfig.ProjectTldGlobal)
 	output.UserOut.Printf("xdebug-ide-location=%v", globalconfig.DdevGlobalConfig.XdebugIDELocation)
 	output.UserOut.Printf("no-bind-mounts=%v", globalconfig.DdevGlobalConfig.NoBindMounts)
-	output.UserOut.Printf("use-traefik=%v", globalconfig.DdevGlobalConfig.UseTraefik)
+	output.UserOut.Printf("router=%v", globalconfig.DdevGlobalConfig.Router)
+	output.UserOut.Printf("wsl2-no-windows-hosts-mgt=%v", globalconfig.DdevGlobalConfig.WSL2NoWindowsHostsMgt)
+	output.UserOut.Printf("router-http-port=%v", globalconfig.DdevGlobalConfig.RouterHTTPPort)
+	output.UserOut.Printf("router-https-port=%v", globalconfig.DdevGlobalConfig.RouterHTTPSPort)
 }
 
 func init() {
-	configGlobalCommand.Flags().StringVarP(&omitContainers, "omit-containers", "", "", "For example, --omit-containers=dba,ddev-ssh-agent")
+	configGlobalCommand.Flags().StringVarP(&omitContainers, "omit-containers", "", "", "For example, --omit-containers=ddev-ssh-agent")
 	configGlobalCommand.Flags().StringVarP(&webEnvironmentGlobal, "web-environment", "", "", `Set the environment variables in the web container: --web-environment="TYPO3_CONTEXT=Development,SOMEENV=someval"`)
-	configGlobalCommand.Flags().StringVarP(&webEnvironmentGlobal, "web-environment-add", "", "", `Append environment variables to the web container: --web-environment="TYPO3_CONTEXT=Development,SOMEENV=someval"`)
+	configGlobalCommand.Flags().StringVarP(&webEnvironmentGlobal, "web-environment-add", "", "", `Append environment variables to the web container: --web-environment-add="TYPO3_CONTEXT=Development,SOMEENV=someval"`)
 	configGlobalCommand.Flags().Bool("nfs-mount-enabled", false, "Enable NFS mounting on all projects globally")
+	_ = configGlobalCommand.Flags().MarkDeprecated("nfs-mount-enabled", fmt.Sprintf("please use --%s instead", configTypes.FlagPerformanceModeName))
 	configGlobalCommand.Flags().BoolVarP(&instrumentationOptIn, "instrumentation-opt-in", "", false, "instrumentation-opt-in=true")
 	configGlobalCommand.Flags().Bool("router-bind-all-interfaces", false, "router-bind-all-interfaces=true")
 	configGlobalCommand.Flags().Int("internet-detection-timeout-ms", 3000, "Increase timeout when checking internet timeout, in milliseconds")
@@ -239,13 +291,22 @@ func init() {
 	configGlobalCommand.Flags().Bool("use-hardened-images", false, "If true, use more secure 'hardened' images for an actual internet deployment.")
 	configGlobalCommand.Flags().Bool("fail-on-hook-fail", false, "If true, 'ddev start' will fail when a hook fails.")
 	configGlobalCommand.Flags().Bool("mutagen-enabled", false, "If true, web container will use mutagen caching/asynchronous updates.")
+	_ = configGlobalCommand.Flags().MarkDeprecated("mutagen-enabled", fmt.Sprintf("please use --%s instead", configTypes.FlagPerformanceModeName))
+	configGlobalCommand.Flags().String(configTypes.FlagPerformanceModeName, configTypes.FlagPerformanceModeDefault, configTypes.FlagPerformanceModeDescription(configTypes.ConfigTypeGlobal))
+	configGlobalCommand.Flags().Bool(configTypes.FlagPerformanceModeResetName, true, configTypes.FlagPerformanceModeResetDescription(configTypes.ConfigTypeGlobal))
 	configGlobalCommand.Flags().String("table-style", "", "Table style for list and describe, see ~/.ddev/global_config.yaml for values")
-	configGlobalCommand.Flags().String("required-docker-compose-version", "", "Override default docker-compose version")
+	configGlobalCommand.Flags().String("required-docker-compose-version", "", "Override default docker-compose version (used only in development testing)")
+	_ = configGlobalCommand.Flags().MarkHidden("required-docker-compose-version")
 	configGlobalCommand.Flags().String("project-tld", "", "Override default project tld")
-	configGlobalCommand.Flags().Bool("use-docker-compose-from-path", true, "If true, use docker-compose from path instead of private ~/.ddev/bin/docker-compose")
+	configGlobalCommand.Flags().Bool("use-docker-compose-from-path", true, "If true, use docker-compose from path instead of private ~/.ddev/bin/docker-compose (used only in development testing)")
+	_ = configGlobalCommand.Flags().MarkHidden("use-docker-compose-from-path")
 	configGlobalCommand.Flags().Bool("no-bind-mounts", true, "If true, don't use bind-mounts - useful for environments like remote docker where bind-mounts are impossible")
 	configGlobalCommand.Flags().String("xdebug-ide-location", "", "For less usual IDE locations specify where the IDE is running for Xdebug to reach it")
 	configGlobalCommand.Flags().Bool("use-traefik", true, "If true, use traefik for ddev-router")
-
+	_ = configGlobalCommand.Flags().MarkDeprecated("use-traefik", "please use --router instead")
+	configGlobalCommand.Flags().String("router", globalconfigTypes.RouterTypeTraefik, fmt.Sprintf("Valid router types are %s, default is %s", strings.Join(globalconfigTypes.GetValidRouterTypes(), ", "), globalconfigTypes.RouterTypeDefault))
+	configGlobalCommand.Flags().Bool("wsl2-no-windows-hosts-mgt", true, "WSL2 only; make DDEV ignore Windows-side hosts file")
+	configGlobalCommand.Flags().String("router-http-port", "", "The router HTTP port for this project")
+	configGlobalCommand.Flags().String("router-https-port", "", "The router HTTPS port for this project")
 	ConfigCommand.AddCommand(configGlobalCommand)
 }

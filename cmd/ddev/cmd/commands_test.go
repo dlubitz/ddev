@@ -8,15 +8,14 @@ import (
 	"runtime"
 	"strings"
 	"testing"
-	"time"
 
-	"github.com/drud/ddev/pkg/ddevapp"
-	"github.com/drud/ddev/pkg/exec"
-	"github.com/drud/ddev/pkg/fileutil"
-	"github.com/drud/ddev/pkg/globalconfig"
-	"github.com/drud/ddev/pkg/nodeps"
-	"github.com/drud/ddev/pkg/testcommon"
-	"github.com/drud/ddev/pkg/util"
+	"github.com/ddev/ddev/pkg/ddevapp"
+	"github.com/ddev/ddev/pkg/exec"
+	"github.com/ddev/ddev/pkg/fileutil"
+	"github.com/ddev/ddev/pkg/globalconfig"
+	"github.com/ddev/ddev/pkg/nodeps"
+	"github.com/ddev/ddev/pkg/testcommon"
+	"github.com/ddev/ddev/pkg/util"
 	asrt "github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -24,7 +23,7 @@ import (
 // TestCustomCommands does basic checks to make sure custom commands work OK.
 func TestCustomCommands(t *testing.T) {
 	assert := asrt.New(t)
-	runTime := util.TimeTrack(time.Now(), t.Name())
+	runTime := util.TimeTrackC(t.Name())
 
 	origDir, _ := os.Getwd()
 
@@ -35,7 +34,7 @@ func TestCustomCommands(t *testing.T) {
 	// so we don't accidentally start it in the wrong directory
 	err = globalconfig.ReadGlobalConfig()
 	require.NoError(t, err)
-	if globalconfig.DdevGlobalConfig.MutagenEnabledGlobal {
+	if globalconfig.DdevGlobalConfig.IsMutagenEnabled() {
 		out, err := exec.RunHostCommand(globalconfig.GetMutagenPath(), "daemon", "start")
 		require.NoError(t, err, "unable to run mutagen daemon start, out='%s', err=%v", out, err)
 	}
@@ -176,8 +175,8 @@ func TestCustomCommands(t *testing.T) {
 
 	// Test line breaks in examples
 	c := "testhostcmd"
-	out, err = exec.RunHostCommand(DdevBin, c, "-h")
-	assert.NoError(err, "Failed to run ddev %s %s", c, "-h")
+	out, err = exec.RunHostCommand(DdevBin, "help", c)
+	assert.NoError(err, "Failed to run ddev %s %s", "help", c)
 	assert.Contains(out, "Examples:\n  ddev testhostcmd\n  ddev testhostcmd -h")
 
 	// Test flags are imported from comments
@@ -187,8 +186,8 @@ func TestCustomCommands(t *testing.T) {
 	assert.NoError(err, "Failed to run ddev %s %v", c, "--test")
 	assert.Contains(out, fmt.Sprintf("%s was executed with args=--test on host %s", c, expectedHost))
 
-	out, err = exec.RunHostCommand(DdevBin, c, "-h")
-	assert.NoError(err, "Failed to run ddev %s %v", c, "-h")
+	out, err = exec.RunHostCommand(DdevBin, "help", c)
+	assert.NoError(err, "Failed to run ddev %s %v", "help", c)
 	assert.Contains(out, "  -t, --test   Usage of test")
 
 	// Tests with app type PHP
@@ -197,10 +196,28 @@ func TestCustomCommands(t *testing.T) {
 	assert.NoError(err)
 
 	// Make sure that all the official ddev-provided custom commands are usable by just checking help
-	for _, c := range []string{"launch", "mysql", "npm", "php", "xdebug", "yarn"} {
+	for _, c := range []string{"launch", "xdebug"} {
 		_, err = exec.RunHostCommand(DdevBin, c, "-h")
 		assert.NoError(err, "Failed to run ddev %s -h", c)
 	}
+
+	for _, c := range []string{"mysql", "npm", "php", "yarn"} {
+		_, err = exec.RunHostCommand(DdevBin, c, "--version")
+		assert.NoError(err, "Failed to run ddev %s --version", c)
+	}
+
+	// See if `ddev python` works for python app types
+	origAppType := app.Type
+	for _, appType := range []string{nodeps.AppTypeDjango4, nodeps.AppTypePython} {
+		app.Type = appType
+		err = app.WriteConfig()
+		require.NoError(t, err)
+		for _, c := range []string{"python"} {
+			out, err = exec.RunHostCommand(DdevBin, c, "--version")
+			assert.NoError(err, "Expected ddev python --version to work with apptype=%s but it didn't, output=%s", c, app.Type, out)
+		}
+	}
+	app.Type = origAppType
 
 	// The various CMS commands should not be available here
 	for _, c := range []string{"artisan", "drush", "magento", "typo3", "typo3cms", "wp"} {
@@ -212,11 +229,11 @@ func TestCustomCommands(t *testing.T) {
 	app.Type = nodeps.AppTypeTYPO3
 	_ = app.WriteConfig()
 
-	_, _ = exec.RunHostCommand(DdevBin)
+	_, _ = exec.RunHostCommand(DdevBin, "debug", "fix-commands")
 	err = app.MutagenSyncFlush()
 	assert.NoError(err)
 	for _, c := range []string{"typo3", "typo3cms"} {
-		_, err = exec.RunHostCommand(DdevBin, c, "-h")
+		_, err = exec.RunHostCommand(DdevBin, "help", c)
 		assert.NoError(err)
 	}
 
@@ -230,7 +247,7 @@ func TestCustomCommands(t *testing.T) {
 	assert.NoError(err)
 
 	for _, c := range []string{"drush"} {
-		_, err = exec.RunHostCommand(DdevBin, c, "-h")
+		_, err = exec.RunHostCommand(DdevBin, "help", c)
 		assert.NoError(err)
 	}
 
@@ -241,7 +258,7 @@ func TestCustomCommands(t *testing.T) {
 	err = app.MutagenSyncFlush()
 	assert.NoError(err)
 	for _, c := range []string{"artisan"} {
-		_, err = exec.RunHostCommand(DdevBin, c, "-h")
+		_, err = exec.RunHostCommand(DdevBin, "help", c)
 		assert.NoError(err)
 	}
 
@@ -252,7 +269,7 @@ func TestCustomCommands(t *testing.T) {
 	err = app.MutagenSyncFlush()
 	assert.NoError(err)
 	for _, c := range []string{"wp"} {
-		_, err = exec.RunHostCommand(DdevBin, c, "-h")
+		_, err = exec.RunHostCommand(DdevBin, "help", c)
 		assert.NoError(err, "expected to find command %s for app.Type=%s", c, app.Type)
 	}
 
@@ -263,12 +280,12 @@ func TestCustomCommands(t *testing.T) {
 	err = app.MutagenSyncFlush()
 	assert.NoError(err)
 	for _, c := range []string{"craft"} {
-		_, err = exec.RunHostCommand(DdevBin, c, "-h")
+		_, err = exec.RunHostCommand(DdevBin, "help", c)
 		assert.NoError(err)
 	}
 
 	// Make sure that the non-command stuff we installed has been copied into projectGlobalCommandsCopy
-	for _, f := range []string{".gitattributes", "db/mysqldump.example", "db/README.txt", "host/heidisql", "host/mysqlworkbench.example", "host/phpstorm.example", "host/README.txt", "host/sequelace", "host/sequelpro", "host/tableplus", "web/README.txt"} {
+	for _, f := range []string{".gitattributes", "db/mysqldump.example", "db/README.txt", "host/heidisql", "host/mysqlworkbench.example", "host/phpstorm.example", "host/README.txt", "host/sequelace", "host/sequelpro", "host/tableplus", "host/querious", "web/README.txt"} {
 		assert.FileExists(filepath.Join(projectGlobalCommandsCopy, f))
 	}
 	// Make sure that the non-command stuff we installed is in project commands dir
@@ -322,11 +339,9 @@ func TestLaunchCommand(t *testing.T) {
 	require.NoError(t, err)
 	cases := map[string]string{
 		"":   app.GetPrimaryURL(),
-		"-p": desc["phpmyadmin_https_url"].(string),
 		"-m": desc["mailhog_https_url"].(string),
 	}
 	if globalconfig.DdevGlobalConfig.MkcertCARoot == "" {
-		cases["-p"] = desc["phpmyadmin_url"].(string)
 		cases["-m"] = desc["mailhog_url"].(string)
 	}
 	for partialCommand, expect := range cases {
@@ -466,7 +481,7 @@ func TestNpmYarnCommands(t *testing.T) {
 	err = app.Start()
 	require.NoError(t, err)
 
-	testDirs := []string{"", "one", "one/two", "one/two/three"}
+	testDirs := []string{"", "one", "one/two"}
 	for _, d := range testDirs {
 		workDir := filepath.Join(app.AppRoot, d)
 		err = os.MkdirAll(workDir, 0755)
@@ -478,16 +493,17 @@ func TestNpmYarnCommands(t *testing.T) {
 		require.NoError(t, err)
 		err = app.MutagenSyncFlush()
 		require.NoError(t, err)
-		out, err := exec.RunHostCommand(DdevBin, "npm", "install")
+		out, err := exec.RunHostCommand(DdevBin, "npm", "install", "--no-audit")
 		assert.NoError(err)
-		assert.Contains(out, "audited 1 package")
+		assert.Contains(out, "up to date in", "d='%s', npm install has wrong output; output='%s'", d, out)
 		out, err = exec.RunHostCommand(DdevBin, "yarn", "install")
 		assert.NoError(err)
 		assert.Contains(out, "success Saved lockfile")
 
 		err = os.RemoveAll(packageJSONFile)
 		assert.NoError(err)
-		_ = os.RemoveAll(filepath.Join(workDir, "package-lock.json"))
+		err = os.RemoveAll(filepath.Join(workDir, "package-lock.json"))
+		assert.NoError(err)
 		err = app.MutagenSyncFlush()
 		require.NoError(t, err)
 	}

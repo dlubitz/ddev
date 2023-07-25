@@ -2,13 +2,14 @@ package ddevapp
 
 import (
 	"fmt"
-	"github.com/drud/ddev/pkg/archive"
-	"github.com/drud/ddev/pkg/fileutil"
-	"github.com/drud/ddev/pkg/util"
-	"github.com/pkg/errors"
 	"os"
 	"path/filepath"
 	"regexp"
+
+	"github.com/ddev/ddev/pkg/archive"
+	"github.com/ddev/ddev/pkg/fileutil"
+	"github.com/ddev/ddev/pkg/nodeps"
+	"github.com/ddev/ddev/pkg/util"
 )
 
 // isCraftCmsApp returns true if the app is of type craftcms
@@ -17,11 +18,8 @@ func isCraftCmsApp(app *DdevApp) bool {
 }
 
 // craftCmsImportFilesAction defines the workflow for importing project files.
-func craftCmsImportFilesAction(app *DdevApp, importPath, extPath string) error {
-	if app.UploadDir == "" {
-		return errors.Errorf("No upload_dir is set for this (craftcms) project")
-	}
-	destPath := app.GetHostUploadDirFullPath()
+func craftCmsImportFilesAction(app *DdevApp, uploadDir, importPath, extPath string) error {
+	destPath := app.calculateHostUploadDirFullPath(uploadDir)
 
 	// parent of destination dir should exist
 	if !fileutil.FileExists(filepath.Dir(destPath)) {
@@ -64,27 +62,30 @@ func craftCmsImportFilesAction(app *DdevApp, importPath, extPath string) error {
 	return nil
 }
 
-// Currently a placeholder, for possible future expansion
-func craftCmsPostConfigAction(app *DdevApp) error {
-	return nil
-}
-
 // Set up the .env file for ddev
 func craftCmsPostStartAction(app *DdevApp) error {
 	// If settings management is disabled, do nothing
 	if app.DisableSettingsManagement {
 		return nil
 	}
+
+	// Check version is v4 or higher or warn user about app type mismatch.
+	if !isCraftCms4orHigher(app) {
+		util.Warning("It looks like the installed Craft CMS is lower than version 4 where it's recommended to use project type `php` or disable settings management with `ddev config --disable-settings-management`")
+		if !util.Confirm("Would you like to stop here, not do the automatic configuration and change project type?") {
+			return nil
+		}
+	}
+
 	// If the .env file doesn't exist, try to create it by copying .env.example to .env
-	var err error
 	envFilePath := filepath.Join(app.AppRoot, app.ComposerRoot, ".env")
 	if !fileutil.FileExists(envFilePath) {
 		var exampleEnvFilePaths = []string{".env.example", ".env.example.dev"}
 		for _, envFileName := range exampleEnvFilePaths {
 			exampleEnvFilePath := filepath.Join(app.AppRoot, app.ComposerRoot, envFileName)
 			if fileutil.FileExists(exampleEnvFilePath) {
-				util.Warning(fmt.Sprintf("Copying %s to .env", envFileName))
-				err = fileutil.CopyFile(exampleEnvFilePath, envFilePath)
+				util.Success(fmt.Sprintf("Copied %s to .env", envFileName))
+				err := fileutil.CopyFile(exampleEnvFilePath, envFilePath)
 				if err != nil {
 					util.Error(fmt.Sprintf("Error copying %s to .env", exampleEnvFilePath))
 
@@ -98,46 +99,54 @@ func craftCmsPostStartAction(app *DdevApp) error {
 		return nil
 	}
 	// Read in the .env file
-	var envFileContents string
-	envFileContents, err = fileutil.ReadFileIntoString(envFilePath)
-	if err != nil {
-		util.Error("Error reading .env file")
+	envMap, envText, err := ReadProjectEnvFile(envFilePath)
+	if err != nil && !os.IsNotExist(err) {
+		return fmt.Errorf("Unable to read .env file: %v", err)
+	}
 
+	port := "3306"
+	driver := "mysql"
+	if app.Database.Type == nodeps.Postgres {
+		driver = "pgsql"
+		port = "5432"
+	}
+
+	// If they have older version of .env with DB_DRIVER, DB_SERVER etc, use those
+	if _, ok := envMap["DB_SERVER"]; ok {
+		// TODO remove, was never an official standard of Craft CMS.
+		envMap = map[string]string{
+			"DB_DRIVER":             driver,
+			"DB_SERVER":             "db",
+			"DB_PORT":               port,
+			"DB_DATABASE":           "db",
+			"DB_USER":               "db",
+			"DB_PASSWORD":           "db",
+			"MAILHOG_SMTP_HOSTNAME": "127.0.0.1",
+			"MAILHOG_SMTP_PORT":     "1025",
+			"PRIMARY_SITE_URL":      app.GetPrimaryURL(),
+		}
+	} else {
+		// Otherwise use the current CRAFT_DB_SERVER etc.
+		envMap = map[string]string{
+			"CRAFT_DB_DRIVER":       driver,
+			"CRAFT_DB_SERVER":       "db",
+			"CRAFT_DB_PORT":         port,
+			"CRAFT_DB_DATABASE":     "db",
+			"CRAFT_DB_USER":         "db",
+			"CRAFT_DB_PASSWORD":     "db",
+			"CRAFT_WEB_URL":         app.GetPrimaryURL(),
+			"CRAFT_WEB_ROOT":        app.GetAbsDocroot(true),
+			"MAILHOG_SMTP_HOSTNAME": "127.0.0.1",
+			"MAILHOG_SMTP_PORT":     "1025",
+			"PRIMARY_SITE_URL":      app.GetPrimaryURL(), // for backward compatibility only
+		}
+	}
+
+	err = WriteProjectEnvFile(envFilePath, envMap, envText)
+	if err != nil {
 		return err
 	}
-	// Set the database-related .env variables appropriately for ddev
-	var dbRegEx *regexp.Regexp
-	dbRegEx = regexp.MustCompile(`DB_(SERVER|DATABASE|USER|PASSWORD)=(.*)`)
-	envFileContents = dbRegEx.ReplaceAllString(envFileContents, `DB_$1=db`)
-	// Set the primary site URL
-	var siteURLRegEx *regexp.Regexp
-	var siteURLReplace string
-	siteURLRegEx = regexp.MustCompile(`PRIMARY_SITE_URL=(.*)`)
-	siteURLReplace = fmt.Sprintf("PRIMARY_SITE_URL=%s", app.GetHTTPSURL())
-	if !siteURLRegEx.MatchString(envFileContents) {
-		envFileContents += "\nPRIMARY_SITE_URL="
-	}
-	envFileContents = siteURLRegEx.ReplaceAllString(envFileContents, siteURLReplace)
-	// Set the MailHog .env variables (https://ddev.readthedocs.io/en/latest/users/basics/developer-tools/#email-capture-and-review-mailhog)
-	var mailhogRegEx *regexp.Regexp
-	mailhogRegEx = regexp.MustCompile(`(MAILHOG_SMTP_HOSTNAME|MAILHOG_SMTP_PORT)=(.*)`)
-	if !mailhogRegEx.MatchString(envFileContents) {
-		envFileContents += "\n\nMAILHOG_SMTP_HOSTNAME=localhost\nMAILHOG_SMTP_PORT=1025"
-	}
-	// Write the modified .env file out
-	var f *os.File
-	f, err = os.Create(envFilePath)
-	if err != nil {
-		util.Error("Error creating .env file")
 
-		return err
-	}
-	_, err = f.WriteString(envFileContents)
-	if err != nil {
-		util.Error("Error writing .env file")
-
-		return err
-	}
 	// If composer.json.default exists, rename it to composer.json
 	composerDefaultFilePath := filepath.Join(app.AppRoot, app.ComposerRoot, "composer.json.default")
 	if fileutil.FileExists(composerDefaultFilePath) {
@@ -152,4 +161,33 @@ func craftCmsPostStartAction(app *DdevApp) error {
 	}
 
 	return nil
+}
+
+func craftCmsConfigOverrideAction(app *DdevApp) error {
+	app.PHPVersion = nodeps.PHP81
+	app.Database = DatabaseDesc{nodeps.MySQL, nodeps.MySQL80}
+	return nil
+}
+
+// isCraftCms4orHigher returns true if the Craft CMS version is 4 or higher. The
+// proper detection will fail if the vendor folder location is changed in the
+// composer.json.
+// The detection is based on a change starting with 4.0.0-RC1 where deprecated
+// constants were removed in src/Craft.php see
+// https://github.com/craftcms/cms/commit/1660ff90a3a69cec425271d47ade66523a4bd44e#diff-21e22a30e7c48265a4dcedc1b1c8b9372eca5d3fdeff6d72c7d9c6b671365c56
+func isCraftCms4orHigher(app *DdevApp) bool {
+	craftFilePath := filepath.Join(app.GetComposerRoot(false, false), "vendor", "craftcms", "cms", "src", "Craft.php")
+	if !fileutil.FileExists(craftFilePath) {
+		// Sources are not installed, assuming v4 or higher.
+		return true
+	}
+
+	craftFileContent, err := fileutil.ReadFileIntoString(craftFilePath)
+	if err != nil {
+		util.Warning("unable to read file `%s` in project `%s`: %v", craftFilePath, app.Name, err)
+
+		return true
+	}
+
+	return !regexp.MustCompile(`const\s+Personal\s*=\s*0`).MatchString(craftFileContent)
 }

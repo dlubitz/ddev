@@ -2,6 +2,8 @@ package nodeps
 
 import (
 	"sort"
+
+	"github.com/ddev/ddev/pkg/config/types"
 )
 
 // Providers
@@ -21,7 +23,6 @@ const (
 // Container types used with ddev
 const (
 	DdevSSHAgentContainer = "ddev-ssh-agent"
-	DBAContainer          = "dba"
 	DBContainer           = "db"
 	WebContainer          = "web"
 	RouterContainer       = "ddev-router"
@@ -29,15 +30,15 @@ const (
 
 // Webserver types
 const (
-	WebserverNginxFPM  = "nginx-fpm"
-	WebserverApacheFPM = "apache-fpm"
+	WebserverNginxFPM      = "nginx-fpm"
+	WebserverApacheFPM     = "apache-fpm"
+	WebserverNginxGunicorn = "nginx-gunicorn"
 )
 
 // ValidOmitContainers is the list of things that can be omitted
 var ValidOmitContainers = map[string]bool{
 	DBContainer:           true,
 	DdevSSHAgentContainer: true,
-	DBAContainer:          true,
 }
 
 // DdevFileSignature is the text we use to detect whether a settings file is managed by us.
@@ -47,19 +48,17 @@ const DdevFileSignature = "#ddev-generated"
 // WebserverDefault is the default webserver type, overridden by $DDEV_WEBSERVER_TYPE
 var WebserverDefault = WebserverNginxFPM
 
-// MutagenEnabledDefault is default value for app.MutagenEnabled
-var MutagenEnabledDefault = false
+// PerformanceModeDefault is default value for app.PerformanceMode
+var PerformanceModeDefault = types.PerformanceModeEmpty
 
-// NFSMountEnabledDefault is default value for app.NFSMountEnabled
-var NFSMountEnabledDefault = false
-
-const NodeJSDefault = "16"
+const NodeJSDefault = "18"
 
 // NoBindMountsDefault is default value for globalconfig.DDEVGlobalConfig.NoBindMounts
 var NoBindMountsDefault = false
 
-// UseTraefikDefault is the default value for globalconfig.DDEVGlobalConfig.UseTraefik
-var UseTraefikDefault = false
+// UseNginxProxyRouter is used in testing to override the default
+// setting for tests.
+var UseNginxProxyRouter = false
 
 // SimpleFormatting is turned on by DDEV_USE_SIMPLE_FORMATTING
 // and makes ddev list and describe, etc. use simpler formatting
@@ -71,16 +70,19 @@ var FailOnHookFailDefault = false
 // ValidWebserverTypes should be updated whenever supported webserver types are added or
 // removed, and should be used to ensure user-supplied values are valid.
 var ValidWebserverTypes = map[string]bool{
-	WebserverNginxFPM:  true,
-	WebserverApacheFPM: true,
+	WebserverNginxFPM:      true,
+	WebserverApacheFPM:     true,
+	WebserverNginxGunicorn: true,
 }
 
-var ValidNodeJSVersions = []string{"14", "16", "18"}
+var ValidNodeJSVersions = []string{"14", "16", "18", "20"}
 
 // App types
 const (
+	AppTypeNone      = ""
 	AppTypeBackdrop  = "backdrop"
 	AppTypeCraftCms  = "craftcms"
+	AppTypeDjango4   = "django4"
 	AppTypeDrupal6   = "drupal6"
 	AppTypeDrupal7   = "drupal7"
 	AppTypeDrupal8   = "drupal8"
@@ -90,6 +92,7 @@ const (
 	AppTypeMagento   = "magento"
 	AppTypeMagento2  = "magento2"
 	AppTypePHP       = "php"
+	AppTypePython    = "python"
 	AppTypeShopware6 = "shopware6"
 	AppTypeTYPO3     = "typo3"
 	AppTypeNeosFlow  = "neos-flow"
@@ -103,9 +106,6 @@ const (
 
 	// DdevDefaultRouterHTTPSPort is the default router HTTPS port
 	DdevDefaultRouterHTTPSPort = "443"
-	// DdevDefaultPHPMyAdminPort is the default router port for dba/PHPMyadmin
-	DdevDefaultPHPMyAdminPort      = "8036"
-	DdevDefaultPHPMyAdminHTTPSPort = "8037"
 	// DdevDefaultMailhogPort is the default router port for Mailhog
 	DdevDefaultMailhogPort      = "8025"
 	DdevDefaultMailhogHTTPSPort = "8026"

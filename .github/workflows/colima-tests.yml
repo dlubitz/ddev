@@ -14,6 +14,7 @@ on:
     inputs:
       debug_enabled:
         description: 'Run the build with tmate set "debug_enabled"'
+        type: boolean
         required: false
         default: false
       testargs:
@@ -28,6 +29,8 @@ defaults:
 env:
   DDEV_DEBUG: true
   DDEV_GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+  DDEV_SKIP_NODEJS_TEST: "true"
+  HOMEBREW_GITHUB_API_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
 permissions:
   contents: read
@@ -35,15 +38,12 @@ permissions:
 jobs:
   tests:
     name: colima-${{ matrix.tests }}-no-bind-mounts=${{ matrix.no-bind-mounts }}
-    defaults:
-      run:
-        shell: bash
 
     strategy:
       matrix:
         webserver: [nginx-fpm]
         tests: [ test ]
-        os: [ macos-11 ]
+        os: [ macos-13 ]
         no-bind-mounts: ['false']
       fail-fast: true
 
@@ -55,40 +55,42 @@ jobs:
       DDEV_TEST_NO_BIND_MOUNTS: ${{ matrix.no-bind-mounts }}
       DDEV_TEST_USE_MUTAGEN: "true"
       GOTEST_SHORT: "true"
+
     steps:
       - uses: actions/checkout@v3
 
-      - name: Homebrew cache/restore
-        uses: actions/cache@v3
-        env:
-          cache-name: cache-homebrew-cache-8
-        with:
-          path: ~/Library/Caches/Homebrew
-          key: ${{ runner.os }}-build-${{ env.cache-name }}
-          restore-keys: |
-            ${{ runner.os }}-build-${{ env.cache-name }}
+      - name: Get Date
+        id: get-date
+        run: |
+          echo "date=$(/bin/date -u "+%Y%V")" >> $GITHUB_OUTPUT
+        shell: bash
 
-      - name: Lima cache/restore
-        uses: actions/cache@v3
-        env:
-          cache-name: cache-lima-8
+      - name: DDEV test cache/restore
+        uses: actions/cache/restore@v3
         with:
-          # npm cache files are stored in `~/.npm` on Linux/macOS
-          path: ~/.lima
-          key: ${{ runner.os }}-build-${{ env.cache-name }}
+          path: ~/.ddev/testcache/tarballs
+          key: ddev-test-cache-${{ steps.get-date.outputs.date }}
           restore-keys: |
-            ${{ runner.os }}-build-${{ env.cache-name }}
+            ddev-test-cache-
+
+      - uses: actions/setup-go@v4
+        with:
+          go-version: '>=1.20'
+
+      - name: Set up Homebrew
+        id: set-up-homebrew
+        uses: Homebrew/actions/setup-homebrew@master
 
       - name: Setup tmate session
         uses: mxschmitt/action-tmate@v3
         with:
           limit-access-to-actor: true
-          github-token: ${{ secrets.GITHUB_TOKEN }}
-        if: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.debug_enabled }}
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.debug_enabled }}
 
       - name: Install Colima and deps (macOS)
-        if: matrix.os == 'macos-11'
-        run: ./.github/workflows/macos-colima-setup.sh && colima version
+        run: | 
+          bash -x ./.github/workflows/macos-colima-setup.sh
+          colima version
 
       - name: Build ddev
         run: | 
@@ -101,6 +103,11 @@ jobs:
           ddev config --project-type=drupal9 --docroot=web --create-docroot
           ddev debug download-images
           ddev poweroff
+          docker builder prune -f -a || true
+          docker buildx prune -f -a || true
+          docker rm -f $(docker ps -aq) >/dev/null || true
+          docker rmi -f $(docker images | awk '/[-]built/ { print $3 }')  >/dev/null || true
+
           # Pre-cache these so we don't see a mess in the later pull
           for image in schickling/beanstalkd:latest memcached:1.5 solr:8; do
             docker pull $image
@@ -120,3 +127,10 @@ jobs:
         run: |
           ddev poweroff
           colima stop
+
+      - name: Clean up Homebrew
+        continue-on-error: true
+        run: |
+          brew update
+          brew autoremove
+          brew cleanup

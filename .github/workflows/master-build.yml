@@ -8,6 +8,7 @@ on:
     branches: [ master, main ]
   release:
     types: [ created ]
+  workflow_dispatch:
 
 env:
   BUILDKIT_PROGRESS: plain
@@ -15,14 +16,15 @@ env:
   DDEV_DEBUG: true
   GITHUB_REPOSITORY_OWNER: ${{ secrets.GITHUB_REPOSITORY_OWNER }}
   DDEV_WINDOWS_SIGN: ${{ secrets.DDEV_WINDOWS_SIGN }}
+  HOMEBREW_GITHUB_API_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
 jobs:
   build-most:
     name: Build DDEV executables except Windows
-    runs-on: ubuntu-20.04
+    runs-on: ubuntu-22.04
     env:
       SegmentKey: ${{ secrets.SEGMENTKEY }}
-
+      AmplitudeAPIKey: ${{ secrets.AMPLITUDE_API_KEY }}
     steps:
       - uses: actions/checkout@v3
         with:
@@ -36,21 +38,23 @@ jobs:
       - name: Install build tools
         run: ./.github/workflows/linux-build-setup.sh
 
-      - uses: actions/setup-go@v3
+      - uses: actions/setup-go@v4
         with:
-          go-version: '>=1.18.0'
+          go-version: '>=1.20'
 
       - name: Build DDEV executables
         run: make linux_amd64 linux_arm64 darwin_amd64 darwin_arm64 completions mkcert
 
-      - name: "Verify that SegmentKey is working (Linux amd64)"
+      - name: "Verify that instrumentation is working (Linux amd64)"
         run: |
           export PATH=".gotmp/bin/linux_amd64:$PATH"
           echo "DDEV_NO_INSTRUMENTATION=${DDEV_NO_INSTRUMENTATION}"
           if [ -z "${SegmentKey}" ]; then echo "SegmentKey is not set"; exit 1; fi
+          if [ -z "${AmplitudeAPIKey}" ]; then echo "AmplitudeAPIKey is not set"; exit 1; fi
           ddev config global --instrumentation-opt-in=true
           ddev config global | grep instrumentation-opt-in=true
           ddev config global | grep -v "SegmentKey is not available."
+          ddev config global | grep -v "AmplitudeAPIKey is not available."
           ddev config global --instrumentation-opt-in=false
 
 
@@ -72,6 +76,7 @@ jobs:
     runs-on: [ self-hosted, windows-signer ]
     env:
       SegmentKey: ${{ secrets.SEGMENTKEY }}
+      AmplitudeAPIKey: ${{ secrets.AMPLITUDE_API_KEY }}
     steps:
       - uses: actions/checkout@v3
         with:
@@ -87,23 +92,27 @@ jobs:
         if: startsWith( github.ref, 'refs/tags/v1')
         run: make chocolatey
 
-      - name: "Verify that SegmentKey is working (Windows)"
+      - name: "Verify that intrumentation is working (Windows)"
         run: |
           export PATH=".gotmp/bin/windows_amd64:$PATH"
           echo "DDEV_NO_INSTRUMENTATION=${DDEV_NO_INSTRUMENTATION}"
           if [ -z "${SegmentKey}" ]; then echo "SegmentKey is not set"; exit 1; fi
+          if [ -z "${AmplitudeAPIKey}" ]; then echo "AmplitudeAPIKey is not set"; exit 1; fi
           ddev config global --instrumentation-opt-in=true
           ddev config global | grep instrumentation-opt-in=true
           ddev config global | grep -v "SegmentKey is not available."
+          ddev config global | grep -v "AmplitudeAPIKey is not available."
           ddev config global --instrumentation-opt-in=false
 
       - name: Cache signed binaries
         # After 3.0.5 they were using zstdmt which is not available on Windows
         # See https://github.com/actions/cache/issues/891
-        uses: actions/cache@v3.0.11
+        # But trying again with @v3, 2023-02-18
+        uses: actions/cache@v3
         with:
           path: .gotmp/bin/windows_amd64
           key: ${{ github.sha }}-${{ github.ref }}-signed-windows-binaries
+          enableCrossOsArchive: true
 
   notarize-macos:
     name: Sign and Notarize ddev on macOS
@@ -117,9 +126,9 @@ jobs:
         with:
           # We need to get all branches and tags for git describe to work properly
           fetch-depth: 0
-      - uses: actions/setup-go@v3
+      - uses: actions/setup-go@v4
         with:
-          go-version: '>=1.18.0'
+          go-version: '>=1.20'
 
       - name: restore build-most results from cache
         uses: actions/cache@v3
@@ -127,6 +136,7 @@ jobs:
         with:
           path: .gotmp/bin
           key: ${{ github.sha }}-${{ github.ref }}-build-most
+          fail-on-cache-miss: true
       - name: test that buildmost cache was loaded
         if: steps.buildmost.outputs.cache-hit != 'true'
         run: exit 1
@@ -142,8 +152,8 @@ jobs:
           for item in .gotmp/bin/darwin*/ddev; do
             echo "Signing and notarizing ${item} ..."
             codesign --remove-signature "${item}" || true
-            curl -s https://raw.githubusercontent.com/drud/signing_tools/master/macos_sign.sh | bash -s -  --signing-password="${DDEV_MACOS_SIGNING_PASSWORD}" --cert-file=certfiles/ddev_developer_id_cert.p12 --cert-name="Developer ID Application: Localdev Foundation (9HQ298V2BW)" --target-binary="${item}"
-            curl -sSL -f https://raw.githubusercontent.com/drud/signing_tools/master/macos_notarize.sh | bash -s -  --app-specific-password=${DDEV_MACOS_APP_PASSWORD} --apple-id=notarizer@localdev.foundation --primary-bundle-id=com.ddev.ddev --target-binary="${item}"
+            curl -s https://raw.githubusercontent.com/ddev/signing_tools/master/macos_sign.sh | bash -s -  --signing-password="${DDEV_MACOS_SIGNING_PASSWORD}" --cert-file=certfiles/ddev_developer_id_cert.p12 --cert-name="Developer ID Application: Localdev Foundation (9HQ298V2BW)" --target-binary="${item}"
+            curl -sSL -f https://raw.githubusercontent.com/ddev/signing_tools/master/macos_notarize.sh | bash -s -  --app-specific-password=${DDEV_MACOS_APP_PASSWORD} --apple-id=notarizer@localdev.foundation --primary-bundle-id=com.ddev.ddev --target-binary="${item}"
           done
       - name: Save notarized binaries to cache
         uses: actions/cache@v3
@@ -153,7 +163,7 @@ jobs:
 
   artifacts:
     name: Upload artifacts
-    runs-on: ubuntu-20.04
+    runs-on: ubuntu-22.04
     needs: [build-most, sign-windows, notarize-macos]
     env:
       DDEV_GITHUB_TOKEN: ${{ secrets.DDEV_GITHUB_TOKEN }}
@@ -177,6 +187,8 @@ jobs:
         with:
           path: .gotmp/bin
           key: ${{ github.sha }}-${{ github.ref }}-build-most
+          enableCrossOsArchive: true
+          fail-on-cache-miss: true
       - name: test that build-most was loaded
         if: steps.buildmost.outputs.cache-hit != 'true'
         run: exit 1
@@ -187,6 +199,8 @@ jobs:
         with:
           path: .gotmp/bin/windows_amd64
           key: ${{ github.sha }}-${{ github.ref }}-signed-windows-binaries
+          enableCrossOsArchive: true
+          fail-on-cache-miss: true
       - name: test that signed-windows was loaded
         if: steps.signedwindows.outputs.cache-hit != 'true'
         run: exit 1
@@ -197,19 +211,21 @@ jobs:
         with:
           path: .gotmp/bin/darwin*
           key: ${{ github.sha }}-${{ github.ref }}-notarize-macos
+          enableCrossOsArchive: true
+          fail-on-cache-miss: true
       - name: test that notarizedmac was loaded
         if: steps.notarizedmac.outputs.cache-hit != 'true'
         run: exit 1
 
       # Goreleaser does GitHub release artifacts, homebrew, AUR, deb/rpm
       - name: goreleaser
-        uses: goreleaser/goreleaser-action@v3
+        uses: goreleaser/goreleaser-action@v4
         if: startsWith( github.ref, 'refs/tags/v1')
         with:
           # either 'goreleaser' (default) or 'goreleaser-pro'
           distribution: goreleaser-pro
           version: latest
-          args: release --rm-dist
+          args: release --clean
         env:
           GITHUB_TOKEN: ${{ secrets.DDEV_GITHUB_TOKEN }}
           GORELEASER_KEY: ${{ secrets.GORELEASER_KEY }}
@@ -243,7 +259,7 @@ jobs:
         with:
           name: ddev-linux-arm64
           path: .gotmp/bin/linux_arm64/ddev
-      - name: Upload inux_amd644 binary
+      - name: Upload linux-amd64 binary
         uses: actions/upload-artifact@v3
         with:
           name: ddev-linux-amd64
